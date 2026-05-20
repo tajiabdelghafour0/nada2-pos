@@ -8,19 +8,18 @@ plugins {
 
 android {
     namespace = "com.example"
-    compileSdk = 35 // بدلتها لـ 35 حيت 36 باقي تجريبي بزاف
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.aistudio.nada2.grocry"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
-        // خلينا غير الـ release باش ما يصدعناش الـ debug
         create("release") {
             val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
             storeFile = file(keystorePath)
@@ -38,8 +37,7 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
         debug {
-            // هنا الحل: الـ debug ماغاديش نحتاجو ليه signingConfig
-            // وغادي يخدم بـ التوقيع الافتراضي ديال أندرويد أوتوماتيكياً
+            // الـ debug خدام بتوقيع أندرويد الافتراضي
         }
     }
     
