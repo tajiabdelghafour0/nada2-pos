@@ -1,0 +1,6 @@
+{
+  "name": "NADA 2",
+  "description": "A production-ready retail and grocery application featuring offline-first catalog management, CameraX & ML Kit smart barcode scanner checkout, dynamic categorization, and intelligence low-stock/expiry alerts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
