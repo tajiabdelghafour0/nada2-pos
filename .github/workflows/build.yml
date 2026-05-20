@@ -17,9 +17,15 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # هادي هي اللعيبة: غنستعملو 'gradle' نيشان بلا ما نخدمو بـ './gradlew'
+    # هاد الخطوة غتأكد واش كاين gradlew، يلا ما كاينش غيخدم بـ gradle المحمل فالسيرفر
     - name: Build with Gradle
-      run: gradle assembleDebug
+      run: |
+        if [ -f "./gradlew" ]; then
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+        else
+          gradle assembleDebug
+        fi
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
