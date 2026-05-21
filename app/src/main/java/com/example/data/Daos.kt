@@ -50,15 +50,21 @@ interface ProductDao {
 
 @Dao
 interface TransactionDao {
+    @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
+    fun getAllTransactions(): Flow<List<Transaction>>
+
+    @Query("SELECT * FROM transaction_items WHERE transactionId = :transactionId ORDER BY id ASC")
+    fun getTransactionItems(transactionId: Long): Flow<List<TransactionItem>>
+
+    @Query("SELECT * FROM transaction_items")
+    fun getAllTransactionItems(): Flow<List<TransactionItem>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(transaction: Transaction): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransactionItem(item: TransactionItem)
 
-    @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
-    fun getAllTransactions(): Flow<List<Transaction>>
-
-    @Query("SELECT * FROM transaction_items WHERE transactionId = :transactionId ORDER BY id ASC")
-    fun getTransactionItems(transactionId: Long): Flow<List<TransactionItem>>
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactionRaw(transaction: Transaction)
 }

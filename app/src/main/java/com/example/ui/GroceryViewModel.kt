@@ -67,6 +67,19 @@ class GroceryViewModel(private val repository: GroceryRepository) : ViewModel() 
         .map { items -> items.sumOf { it.product.price * it.quantity } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
+    val todayRevenue: StateFlow<Double> = repository.transactions
+        .map { txList ->
+            val calendar = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val startOfDay = calendar.timeInMillis
+            txList.filter { it.timestamp >= startOfDay }.sumOf { it.totalAmount }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
     // COOLDOWN map to prevent double-scans of same item within 1.5 seconds
     private val scanCooldowns = mutableMapOf<String, Long>()
 
@@ -146,7 +159,7 @@ class GroceryViewModel(private val repository: GroceryRepository) : ViewModel() 
             try {
                 repository.executeCheckout(total, items)
                 _cartItems.value = emptyList()
-                _toastMessage.emit("Checkout completed successfully! Total: $${String.format("%.2f", total)}")
+                _toastMessage.emit("Checkout completed successfully! Total: ${String.format("%.2f", total)} DH")
             } catch (e: Exception) {
                 _toastMessage.emit("Checkout failed: ${e.localizedMessage}")
             }
@@ -190,6 +203,184 @@ class GroceryViewModel(private val repository: GroceryRepository) : ViewModel() 
         viewModelScope.launch {
             repository.deleteProduct(product)
             _toastMessage.emit("Product '${product.name}' deleted")
+        }
+    }
+
+    // Duplicate Product utility to clone variants instantly
+    fun duplicateProduct(product: Product) {
+        viewModelScope.launch {
+            val randomSuffix = (1000..9999).random().toString()
+            val duplicated = Product(
+                id = 0L,
+                barcode = "${product.barcode}_copy_$randomSuffix",
+                name = "${product.name} (Copy)",
+                categoryId = product.categoryId,
+                price = product.price,
+                stockQuantity = product.stockQuantity,
+                expiryDate = product.expiryDate,
+                imageUri = product.imageUri
+            )
+            repository.insertProduct(duplicated)
+            _toastMessage.emit("Cloned product '${product.name}' into draft duplicate!")
+        }
+    }
+
+    // Export completely offline data into standard text-sharing JSON backup
+    fun exportBackupAsJson(context: android.content.Context) {
+        viewModelScope.launch {
+            try {
+                val root = org.json.JSONObject()
+
+                // Categories
+                val cats = repository.categories.first()
+                val catsArray = org.json.JSONArray()
+                cats.forEach { cat ->
+                    val obj = org.json.JSONObject().apply {
+                        put("id", cat.id)
+                        put("name", cat.name)
+                        put("colorHex", cat.colorHex)
+                    }
+                    catsArray.put(obj)
+                }
+                root.put("categories", catsArray)
+
+                // Products
+                val prods = repository.products.first()
+                val prodsArray = org.json.JSONArray()
+                prods.forEach { prod ->
+                    val obj = org.json.JSONObject().apply {
+                        put("id", prod.id)
+                        put("barcode", prod.barcode)
+                        put("name", prod.name)
+                        put("categoryId", prod.categoryId ?: org.json.JSONObject.NULL)
+                        put("price", prod.price)
+                        put("stockQuantity", prod.stockQuantity)
+                        put("expiryDate", prod.expiryDate ?: org.json.JSONObject.NULL)
+                        put("imageUri", prod.imageUri ?: org.json.JSONObject.NULL)
+                    }
+                    prodsArray.put(obj)
+                }
+                root.put("products", prodsArray)
+
+                // Transactions
+                val txs = repository.transactions.first()
+                val txsArray = org.json.JSONArray()
+                txs.forEach { tx ->
+                    val obj = org.json.JSONObject().apply {
+                        put("id", tx.id)
+                        put("timestamp", tx.timestamp)
+                        put("totalAmount", tx.totalAmount)
+                    }
+                    txsArray.put(obj)
+                }
+                root.put("transactions", txsArray)
+
+                // Transaction Items
+                val items = repository.allTransactionItems.first()
+                val itemsArray = org.json.JSONArray()
+                items.forEach { item ->
+                    val obj = org.json.JSONObject().apply {
+                        put("id", item.id)
+                        put("transactionId", item.transactionId)
+                        put("productId", item.productId)
+                        put("productName", item.productName)
+                        put("productPrice", item.productPrice)
+                        put("quantity", item.quantity)
+                        put("subtotal", item.subtotal)
+                    }
+                    itemsArray.put(obj)
+                }
+                root.put("transactionItems", itemsArray)
+
+                val jsonString = root.toString(4)
+
+                // Copy to Clipboard as a convenient backup fallback
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("NADA2_Backup", jsonString)
+                clipboard.setPrimaryClip(clip)
+
+                // Open system text share sheet to let users send backup string to whatsapp, email, drive, etc.
+                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, "NADA 2 Backup JSON")
+                    putExtra(android.content.Intent.EXTRA_TEXT, jsonString)
+                }
+
+                val chooser = android.content.Intent.createChooser(intent, "Share NADA 2 Backup JSON File")
+                chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                _toastMessage.emit("Database backup copied to clipboard & share sheet launched!")
+            } catch (e: Exception) {
+                _toastMessage.emit("Backup export failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    // Import from JSON text backup
+    fun importBackupFromJson(jsonString: String) {
+        viewModelScope.launch {
+            try {
+                val root = org.json.JSONObject(jsonString)
+
+                val catsList = mutableListOf<Category>()
+                val catsArray = root.optJSONArray("categories") ?: org.json.JSONArray()
+                for (i in 0 until catsArray.length()) {
+                    val obj = catsArray.getJSONObject(i)
+                    catsList.add(Category(
+                        id = obj.getLong("id"),
+                        name = obj.getString("name"),
+                        colorHex = obj.getString("colorHex")
+                    ))
+                }
+
+                val prodsList = mutableListOf<Product>()
+                val prodsArray = root.optJSONArray("products") ?: org.json.JSONArray()
+                for (i in 0 until prodsArray.length()) {
+                    val obj = prodsArray.getJSONObject(i)
+                    prodsList.add(Product(
+                        id = obj.getLong("id"),
+                        barcode = obj.getString("barcode"),
+                        name = obj.getString("name"),
+                        categoryId = if (obj.isNull("categoryId")) null else obj.getLong("categoryId"),
+                        price = obj.getDouble("price"),
+                        stockQuantity = obj.getDouble("stockQuantity"),
+                        expiryDate = if (obj.isNull("expiryDate")) null else obj.getLong("expiryDate"),
+                        imageUri = if (obj.isNull("imageUri")) null else obj.getString("imageUri")
+                    ))
+                }
+
+                val txsList = mutableListOf<Transaction>()
+                val txsArray = root.optJSONArray("transactions") ?: org.json.JSONArray()
+                for (i in 0 until txsArray.length()) {
+                    val obj = txsArray.getJSONObject(i)
+                    txsList.add(Transaction(
+                        id = obj.getLong("id"),
+                        timestamp = obj.getLong("timestamp"),
+                        totalAmount = obj.getDouble("totalAmount")
+                    ))
+                }
+
+                val itemsList = mutableListOf<TransactionItem>()
+                val itemsArray = root.optJSONArray("transactionItems") ?: org.json.JSONArray()
+                for (i in 0 until itemsArray.length()) {
+                    val obj = itemsArray.getJSONObject(i)
+                    itemsList.add(TransactionItem(
+                        id = obj.getLong("id"),
+                        transactionId = obj.getLong("transactionId"),
+                        productId = obj.getLong("productId"),
+                        productName = obj.getString("productName"),
+                        productPrice = obj.getDouble("productPrice"),
+                        quantity = obj.getDouble("quantity"),
+                        subtotal = obj.getDouble("subtotal")
+                    ))
+                }
+
+                repository.restoreDatabase(catsList, prodsList, txsList, itemsList)
+                _toastMessage.emit("Backup imported! Restored ${prodsList.size} products, ${catsList.size} categories and ${txsList.size} sales records.")
+            } catch (e: Exception) {
+                _toastMessage.emit("Import failed: JSON data is malformed or invalid. Details: ${e.localizedMessage}")
+            }
         }
     }
 }

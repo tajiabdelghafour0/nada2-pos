@@ -87,6 +87,7 @@ val presetColors = listOf(
 fun GroceryApp(viewModel: GroceryViewModel) {
     val context = LocalContext.current
     var currentTab by remember { mutableStateOf(GroceryTab.CHECKOUT) }
+    var showBackupSettingsDialog by remember { mutableStateOf(false) }
     
     val lowStockCount by viewModel.lowStockProducts.collectAsState()
     val expiringCount by viewModel.expiringSoonProducts.collectAsState()
@@ -97,6 +98,13 @@ fun GroceryApp(viewModel: GroceryViewModel) {
         viewModel.toastMessage.collect { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    if (showBackupSettingsDialog) {
+        BackupSettingsDialog(
+            viewModel = viewModel,
+            onDismiss = { showBackupSettingsDialog = false }
+        )
     }
 
     Scaffold(
@@ -141,14 +149,14 @@ fun GroceryApp(viewModel: GroceryViewModel) {
                     }
                 },
                 actions = {
-                    // Sleek Violet Notification Bell Button with Badge
+                    // Sleek Violet Notification Bell Button with Badge (Navigates to Alerts)
                     Box(
                         modifier = Modifier
                             .padding(end = 8.dp)
                             .size(40.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.secondaryContainer)
-                            .clickable { /* action */ },
+                            .clickable { currentTab = GroceryTab.ALERTS },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -169,13 +177,14 @@ fun GroceryApp(viewModel: GroceryViewModel) {
                         }
                     }
 
-                    // Sleek Violet User Profile Button
+                    // Sleek Violet User Profile Button (Opens Backup Settings)
                     Box(
                         modifier = Modifier
                             .padding(end = 12.dp)
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.secondaryContainer),
+                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                            .clickable { showBackupSettingsDialog = true },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -258,11 +267,11 @@ fun CheckoutScreen(
     var simulatedBarcode by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // TOP HALF: SCANNER OR PREVIEW FEED
+        // TOP HALF: SCANNER OR PREVIEW FEED (320dp Prominent Height)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.40f)
+                .height(320.dp)
                 .padding(12.dp),
             shape = RoundedCornerShape(24.dp),
             border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
@@ -272,13 +281,53 @@ fun CheckoutScreen(
             elevation = CardDefaults.cardElevation(8.dp)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+                var isTorchOn by remember { mutableStateOf(false) }
+                val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
+
                 if (cameraPermissionState.status.isGranted) {
                     CameraScannerView(
                         modifier = Modifier.fillMaxSize(),
+                        isTorchOn = isTorchOn,
                         onBarcodeScanned = { barcode ->
+                            // Audio Feedback (Quick Tone Beep)
+                            try {
+                                val toneGen = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 100)
+                                toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 120)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                            
+                            // Haptic Feedback
+                            try {
+                                hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+
                             viewModel.onBarcodeScanned(barcode, onNavigateToInventory)
                         }
                     )
+
+                    // Flashlight / Torch Toggle Button (High Contrast Top Left)
+                    IconButton(
+                        onClick = { isTorchOn = !isTorchOn },
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(12.dp)
+                            .size(46.dp)
+                            .background(
+                                color = if (isTorchOn) Color(0xFFFFEB3B) else Color.Black.copy(alpha = 0.65f),
+                                shape = CircleShape
+                            )
+                            .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = "Toggle Flashlight",
+                            tint = if (isTorchOn) Color.Black else Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                     
                     // Sleek Neon Green Rounded Sight Box
                     Box(
@@ -426,7 +475,7 @@ fun CheckoutScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.60f),
+                .weight(1f),
             color = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
@@ -547,17 +596,26 @@ fun CheckoutScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "$${String.format(Locale.getDefault(), "%.2f", cartTotal)}",
-                                style = MaterialTheme.typography.headlineMedium,
+                                text = "${String.format(Locale.getDefault(), "%.2f", cartTotal)} DH",
+                                fontSize = 32.sp,
                                 fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = Color(0xFF006D3A) // Professional Emerald Green
                             )
                         }
                     }
 
+                    val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
+
                     // Large Sleek Primary Full-Width Checkout Button
                     Button(
-                        onClick = { viewModel.checkoutCart() },
+                        onClick = {
+                            try {
+                                hapticFeedback.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                            viewModel.checkoutCart()
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -629,12 +687,12 @@ fun CartListItemRow(item: CartItem, viewModel: GroceryViewModel) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "$${String.format("%.2f", item.product.price)} each",
+                    text = "${String.format("%.2f", item.product.price)} DH each",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "Subtotal: $${String.format("%.2f", item.product.price * item.quantity)}",
+                    text = "Subtotal: ${String.format("%.2f", item.product.price * item.quantity)} DH",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary
@@ -855,6 +913,7 @@ fun InventoryScreen(viewModel: GroceryViewModel) {
                         ProductInventoryRow(
                             product = product,
                             category = productCategory,
+                            onDuplicate = { viewModel.duplicateProduct(product) },
                             onEdit = { showEditDialog = product },
                             onDelete = { viewModel.deleteProduct(product) }
                         )
@@ -914,6 +973,7 @@ fun Modifier.horizontalScrollComposeActual(): Modifier {
 fun ProductInventoryRow(
     product: Product,
     category: Category?,
+    onDuplicate: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -987,7 +1047,7 @@ fun ProductInventoryRow(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "$${String.format("%.2f", product.price)}",
+                        text = "${String.format("%.2f", product.price)} DH",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -1030,7 +1090,10 @@ fun ProductInventoryRow(
             }
 
             // Actions dropdown
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDuplicate) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Duplicate (Variant)", tint = Color(0xFF2E7D32))
+                }
                 IconButton(onClick = onEdit) {
                     Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
                 }
@@ -1187,6 +1250,7 @@ fun AddEditProductDialog(
                     ) {
                         CameraScannerView(
                             modifier = Modifier.fillMaxSize(),
+                            isTorchOn = false,
                             onBarcodeScanned = { str ->
                                 barcode = str
                                 activeScannerInDialog = false
@@ -1261,7 +1325,7 @@ fun AddEditProductDialog(
                     OutlinedTextField(
                         value = priceStr,
                         onValueChange = { priceStr = it },
-                        label = { Text("Price ($)") },
+                        label = { Text("Price (DH)") },
                         modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true
@@ -1818,7 +1882,7 @@ fun AlertLowStockRow(product: Product) {
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(product.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("Price: $${String.format("%.2f", product.price)}", fontSize = 11.sp)
+                Text("Price: ${String.format("%.2f", product.price)} DH", fontSize = 11.sp)
             }
             Text(
                 "Qty: ${product.stockQuantity}",
@@ -1880,16 +1944,26 @@ fun AlertExpiringRow(product: Product) {
 @Composable
 fun CameraScannerView(
     modifier: Modifier = Modifier,
+    isTorchOn: Boolean,
     onBarcodeScanned: (String) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val previewView = remember { PreviewView(context) }
+    var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
 
     DisposableEffect(Unit) {
         onDispose {
             cameraExecutor.shutdown()
+        }
+    }
+
+    LaunchedEffect(isTorchOn, activeCamera) {
+        try {
+            activeCamera?.cameraControl?.enableTorch(isTorchOn)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -1939,15 +2013,187 @@ fun CameraScannerView(
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
+                val camera = cameraProvider.bindToLifecycle(
                     lifecycleOwner,
                     cameraSelector,
                     preview,
                     imageAnalysis
                 )
+                activeCamera = camera
             } catch (exc: Exception) {
                 exc.printStackTrace()
             }
         }, ContextCompat.getMainExecutor(context))
+    }
+}
+
+@Composable
+fun BackupSettingsDialog(
+    viewModel: GroceryViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val todayRevenue by viewModel.todayRevenue.collectAsState()
+    var pastedJsonText by remember { mutableStateOf("") }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Settings",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "App Settings & Manual Backups",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Control database state and track store metrics offline.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFF1F8E9),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFC5E1A5))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "TODAY'S REVENUE",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF558B2F),
+                            letterSpacing = 1.1.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "${String.format(Locale.getDefault(), "%.2f", todayRevenue)} DH",
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF2E7D32)
+                        )
+                    }
+                }
+
+                androidx.compose.material3.HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                Text(
+                    text = "Export Backup Database",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                )
+                Text(
+                    text = "Converts and structures catalog items, categories, and receipts into a shared text structure. Copies backup content directly to your phone clipboard automatically.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                )
+                Button(
+                    onClick = { viewModel.exportBackupAsJson(context) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Share, "Export", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Export & Copy Database", fontSize = 12.sp)
+                }
+
+                androidx.compose.material3.HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+
+                Text(
+                    text = "Import / Restore Database",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                )
+                Text(
+                    text = "Pasting database snapshot content below will restore full transaction archives and stock levels.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                )
+
+                OutlinedTextField(
+                    value = pastedJsonText,
+                    onValueChange = { pastedJsonText = it },
+                    label = { Text("Paste JSON Backup content here") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(110.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp),
+                    maxLines = 6,
+                    singleLine = false
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Button(
+                    onClick = {
+                        if (pastedJsonText.isNotBlank()) {
+                            viewModel.importBackupFromJson(pastedJsonText)
+                            pastedJsonText = ""
+                            onDismiss()
+                        } else {
+                            Toast.makeText(context, "Please paste database JSON text!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = pastedJsonText.isNotBlank()
+                ) {
+                    Icon(Icons.Default.Upload, "Import", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Import & Restore", fontSize = 12.sp)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Close")
+                }
+            }
+        }
     }
 }

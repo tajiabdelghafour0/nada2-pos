@@ -60,6 +60,30 @@ class GroceryRepository(private val database: AppDatabase) {
     }
 
     val transactions: Flow<List<Transaction>> = transactionDao.getAllTransactions()
+    val allTransactionItems: Flow<List<TransactionItem>> = transactionDao.getAllTransactionItems()
+
+    suspend fun restoreDatabase(
+        cats: List<Category>,
+        prods: List<Product>,
+        txs: List<Transaction>,
+        items: List<TransactionItem>
+    ) {
+        database.withTransaction {
+            database.clearAllTables()
+            for (cat in cats) {
+                categoryDao.insertCategory(cat)
+            }
+            for (prod in prods) {
+                productDao.insertProduct(prod)
+            }
+            for (tx in txs) {
+                transactionDao.insertTransactionRaw(tx)
+            }
+            for (item in items) {
+                transactionDao.insertTransactionItem(item)
+            }
+        }
+    }
 
     suspend fun executeCheckout(totalAmount: Double, cartItems: List<CartItem>) {
         database.withTransaction {
