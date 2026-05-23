@@ -17,14 +17,18 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # هاد الخطوة غتأكد واش كاين gradlew، يلا ما كاينش غيخدم بـ gradle المحمل فالسيرفر
+    # 🚀 هاد الخطوة السحرية غتصاوب ملف debug.keystore وهمي فالسيرفر باش Gradle ما يتبلكاش
+    - name: Create debug keystore if missing
+      run: |
+        keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
     - name: Build with Gradle
       run: |
         if [ -f "./gradlew" ]; then
           chmod +x ./gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
         else
-          gradle assembleDebug
+          gradle assembleDebug --no-daemon
         fi
 
     - name: Upload APK
