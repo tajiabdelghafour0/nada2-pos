@@ -44,7 +44,7 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      // signingConfig removed
+      signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
   compileOptions {

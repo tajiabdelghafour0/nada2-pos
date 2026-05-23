@@ -1985,6 +1985,11 @@ fun CameraScannerView(
 
             val scanner = BarcodeScanning.getClient()
 
+            // State for length validation & debouncing (Rule 1 & Rule 2)
+            var lastScannedBarcode: String? = null
+            var scanCount = 0
+            var firstScanTime = 0L
+
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
                 val mediaImage = imageProxy.image
                 if (mediaImage != null) {
@@ -1993,8 +1998,34 @@ fun CameraScannerView(
                         .addOnSuccessListener { barcodes ->
                             for (barcode in barcodes) {
                                 val rawValue = barcode.rawValue
-                                if (rawValue != null && rawValue.isNotBlank()) {
-                                    onBarcodeScanned(rawValue)
+                                // Rule 1: EAN-13 Length Validation. Only accept exactly 13 characters.
+                                if (rawValue != null && rawValue.length == 13) {
+                                    val currentTime = System.currentTimeMillis()
+                                    // Rule 2: Consecutive Scan Verification / Debouncing
+                                    if (rawValue == lastScannedBarcode) {
+                                        if (currentTime - firstScanTime <= 400) {
+                                            scanCount++
+                                        } else {
+                                            // The 400ms window expired. Reset counter and update timing.
+                                            scanCount = 1
+                                            firstScanTime = currentTime
+                                        }
+                                    } else {
+                                        // Different barcode sequence detected, reset state.
+                                        lastScannedBarcode = rawValue
+                                        scanCount = 1
+                                        firstScanTime = currentTime
+                                    }
+
+                                    // Check if we hit the consecutive threshold of at least 3 scans within the window
+                                    if (scanCount >= 3) {
+                                        onBarcodeScanned(rawValue)
+                                        // Reset immediately to avoid double triggering on sequential frames
+                                        lastScannedBarcode = null
+                                        scanCount = 0
+                                        firstScanTime = 0L
+                                        break
+                                    }
                                 }
                             }
                         }
