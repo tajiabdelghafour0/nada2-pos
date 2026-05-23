@@ -10,6 +10,7 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
@@ -259,6 +260,7 @@ fun CheckoutScreen(
     viewModel: GroceryViewModel,
     onNavigateToInventory: () -> Unit
 ) {
+    val context = LocalContext.current
     val cartItems by viewModel.cartItems.collectAsState()
     val cartTotal by viewModel.cartTotal.collectAsState()
     val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
@@ -274,7 +276,7 @@ fun CheckoutScreen(
                 .height(320.dp)
                 .padding(12.dp),
             shape = RoundedCornerShape(24.dp),
-            border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+            border = androidx.compose.foundation.BorderStroke(3.dp, Color(0xFF2E7D32)), // Forest-green boundary
             colors = CardDefaults.cardColors(
                 containerColor = Color(0xFF1C1B1F) // Deep black backdrop
             ),
@@ -284,12 +286,24 @@ fun CheckoutScreen(
                 var isTorchOn by remember { mutableStateOf(false) }
                 val hapticFeedback = androidx.compose.ui.platform.LocalHapticFeedback.current
 
+                // Infinite transition for sweeping laser effect
+                val infiniteTransition = rememberInfiniteTransition(label = "laser_sweep_transition")
+                val laserSweepY by infiniteTransition.animateFloat(
+                    initialValue = 0.15f,
+                    targetValue = 0.85f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1500, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "sweep_progress"
+                )
+
                 if (cameraPermissionState.status.isGranted) {
                     CameraScannerView(
                         modifier = Modifier.fillMaxSize(),
                         isTorchOn = isTorchOn,
                         onBarcodeScanned = { barcode ->
-                            // Audio Feedback (Quick Tone Beep)
+                            // Audio Feedback (Crisp retail beep)
                             try {
                                 val toneGen = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 100)
                                 toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 120)
@@ -308,7 +322,7 @@ fun CheckoutScreen(
                         }
                     )
 
-                    // Flashlight / Torch Toggle Button (High Contrast Top Left)
+                    // Flashlight / Torch Toggle Button (High Contrast Top Left) - Reactive Neon Style
                     IconButton(
                         onClick = { isTorchOn = !isTorchOn },
                         modifier = Modifier
@@ -316,15 +330,19 @@ fun CheckoutScreen(
                             .padding(12.dp)
                             .size(46.dp)
                             .background(
-                                color = if (isTorchOn) Color(0xFFFFEB3B) else Color.Black.copy(alpha = 0.65f),
+                                color = if (isTorchOn) Color(0xFFE0F7FA) else Color.Black.copy(alpha = 0.65f),
                                 shape = CircleShape
                             )
-                            .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                            .border(
+                                width = 2.dp,
+                                color = if (isTorchOn) Color(0xFF00FF66) else Color(0x8000FF66),
+                                shape = CircleShape
+                            )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Bolt,
                             contentDescription = "Toggle Flashlight",
-                            tint = if (isTorchOn) Color.Black else Color.White,
+                            tint = if (isTorchOn) Color(0xFF00C853) else Color.White,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -338,24 +356,23 @@ fun CheckoutScreen(
                                 width = 2.dp,
                                 color = Color(0xFF00FF00), // Neon Green
                                 shape = RoundedCornerShape(16.dp)
-                            ),
-                        contentAlignment = Alignment.Center
+                            )
                     ) {
-                        // Pulsing Red Laser Sight Line
-                        Canvas(modifier = Modifier.fillMaxWidth().height(8.dp)) {
-                            val midY = size.height / 2
+                        // Central Sweeping Red Laser Sweep Line
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val sweepY = size.height * laserSweepY
                             // Draw glow
                             drawLine(
                                 color = Color(0x7FFF0000),
-                                start = androidx.compose.ui.geometry.Offset(8f, midY),
-                                end = androidx.compose.ui.geometry.Offset(size.width - 8f, midY),
+                                start = androidx.compose.ui.geometry.Offset(8f, sweepY),
+                                end = androidx.compose.ui.geometry.Offset(size.width - 8f, sweepY),
                                 strokeWidth = 8f
                             )
                             // Draw core laser
                             drawLine(
                                 color = Color(0xFFFF0000), // Sharp Red
-                                start = androidx.compose.ui.geometry.Offset(12f, midY),
-                                end = androidx.compose.ui.geometry.Offset(size.width - 12f, midY),
+                                start = androidx.compose.ui.geometry.Offset(12f, sweepY),
+                                end = androidx.compose.ui.geometry.Offset(size.width - 12f, sweepY),
                                 strokeWidth = 3f
                             )
                         }
@@ -614,6 +631,20 @@ fun CheckoutScreen(
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
+                            // Physical device vibration impulse
+                            try {
+                                val vibrator = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                                if (vibrator != null && vibrator.hasVibrator()) {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                        vibrator.vibrate(android.os.VibrationEffect.createOneShot(100, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        vibrator.vibrate(100)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
                             viewModel.checkoutCart()
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -790,6 +821,7 @@ fun InventoryScreen(viewModel: GroceryViewModel) {
     // Add & Edit Product forms variables
     var showAddDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf<Product?>(null) }
+    var showDuplicateDialog by remember { mutableStateOf<Product?>(null) }
 
     // Read barcode passed from scanned but unrecognized items (Legendary UX!)
     val scannedBarcodeForNewProduct by viewModel.scannedBarcodeForNewProduct.collectAsState()
@@ -913,7 +945,7 @@ fun InventoryScreen(viewModel: GroceryViewModel) {
                         ProductInventoryRow(
                             product = product,
                             category = productCategory,
-                            onDuplicate = { viewModel.duplicateProduct(product) },
+                            onDuplicate = { showDuplicateDialog = product },
                             onEdit = { showEditDialog = product },
                             onDelete = { viewModel.deleteProduct(product) }
                         )
@@ -950,6 +982,21 @@ fun InventoryScreen(viewModel: GroceryViewModel) {
                 onSave = { product ->
                     viewModel.saveProduct(product)
                     showEditDialog = null
+                }
+            )
+        }
+
+        // DUPLICATE DIALOG
+        if (showDuplicateDialog != null) {
+            AddEditProductDialog(
+                editingProduct = showDuplicateDialog,
+                isDuplicate = true,
+                categories = categories,
+                initialBarcode = null,
+                onDismiss = { showDuplicateDialog = null },
+                onSave = { product ->
+                    viewModel.saveProduct(product)
+                    showDuplicateDialog = null
                 }
             )
         }
@@ -1135,14 +1182,15 @@ fun ProductThumbnail(imageUri: String?, modifier: Modifier = Modifier) {
 @Composable
 fun AddEditProductDialog(
     editingProduct: Product?,
+    isDuplicate: Boolean = false,
     categories: List<Category>,
     initialBarcode: String?,
     onDismiss: () -> Unit,
     onSave: (Product) -> Unit
 ) {
     val context = LocalContext.current
-    var name by remember { mutableStateOf(editingProduct?.name ?: "") }
-    var barcode by remember { mutableStateOf(editingProduct?.barcode ?: initialBarcode ?: "") }
+    var name by remember { mutableStateOf(if (isDuplicate) "${editingProduct?.name} (Copy)" else (editingProduct?.name ?: "")) }
+    var barcode by remember { mutableStateOf(if (isDuplicate) "" else (editingProduct?.barcode ?: initialBarcode ?: "")) }
     var priceStr by remember { mutableStateOf(editingProduct?.price?.toString() ?: "") }
     var stockStr by remember { mutableStateOf(editingProduct?.stockQuantity?.toString() ?: "") }
     var expiryDateLong by remember { mutableStateOf(editingProduct?.expiryDate) }
@@ -1444,7 +1492,7 @@ fun AddEditProductDialog(
                                 Toast.makeText(context, "Please configure valid Barcode, Name, and Price!", Toast.LENGTH_SHORT).show()
                             } else {
                                 val savedProduct = Product(
-                                    id = editingProduct?.id ?: 0L,
+                                    id = if (isDuplicate) 0L else (editingProduct?.id ?: 0L),
                                     barcode = barcode,
                                     name = name,
                                     categoryId = selectedCategoryId,
@@ -1967,6 +2015,16 @@ fun CameraScannerView(
         }
     }
 
+    val scanState = remember {
+        object {
+            var lastScannedBarcode: String? = null
+            var scanCount = 0
+            var firstScanTime = 0L
+            var cooldownBarcode: String? = null
+            var cooldownExpiryTime = 0L
+        }
+    }
+
     AndroidView(
         factory = { previewView },
         modifier = modifier
@@ -1985,11 +2043,6 @@ fun CameraScannerView(
 
             val scanner = BarcodeScanning.getClient()
 
-            // State for length validation & debouncing (Rule 1 & Rule 2)
-            var lastScannedBarcode: String? = null
-            var scanCount = 0
-            var firstScanTime = 0L
-
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
                 val mediaImage = imageProxy.image
                 if (mediaImage != null) {
@@ -1998,32 +2051,49 @@ fun CameraScannerView(
                         .addOnSuccessListener { barcodes ->
                             for (barcode in barcodes) {
                                 val rawValue = barcode.rawValue
-                                // Rule 1: EAN-13 Length Validation. Only accept exactly 13 characters.
+                                // Rule A: EAN-13 Length Validation. Only accept exactly 13 characters.
                                 if (rawValue != null && rawValue.length == 13) {
                                     val currentTime = System.currentTimeMillis()
-                                    // Rule 2: Consecutive Scan Verification / Debouncing
-                                    if (rawValue == lastScannedBarcode) {
-                                        if (currentTime - firstScanTime <= 400) {
-                                            scanCount++
+
+                                    // Rule C RESET: Reset immediately if a COMPLETELY DIFFERENT 13-digit barcode enters the frame
+                                    if (scanState.cooldownBarcode != null && rawValue != scanState.cooldownBarcode) {
+                                        scanState.cooldownBarcode = null
+                                        scanState.cooldownExpiryTime = 0L
+                                    }
+
+                                    // Rule C IGNORE Check: Ignore that specific barcode string if 2-sec cooldown has not expired
+                                    if (rawValue == scanState.cooldownBarcode && currentTime < scanState.cooldownExpiryTime) {
+                                        continue
+                                    }
+
+                                    // Rule B: Consecutive Frame Validation / Debouncing
+                                    if (rawValue == scanState.lastScannedBarcode) {
+                                        if (currentTime - scanState.firstScanTime <= 400) {
+                                            scanState.scanCount++
                                         } else {
                                             // The 400ms window expired. Reset counter and update timing.
-                                            scanCount = 1
-                                            firstScanTime = currentTime
+                                            scanState.scanCount = 1
+                                            scanState.firstScanTime = currentTime
                                         }
                                     } else {
                                         // Different barcode sequence detected, reset state.
-                                        lastScannedBarcode = rawValue
-                                        scanCount = 1
-                                        firstScanTime = currentTime
+                                        scanState.lastScannedBarcode = rawValue
+                                        scanState.scanCount = 1
+                                        scanState.firstScanTime = currentTime
                                     }
 
                                     // Check if we hit the consecutive threshold of at least 3 scans within the window
-                                    if (scanCount >= 3) {
+                                    if (scanState.scanCount >= 3) {
                                         onBarcodeScanned(rawValue)
-                                        // Reset immediately to avoid double triggering on sequential frames
-                                        lastScannedBarcode = null
-                                        scanCount = 0
-                                        firstScanTime = 0L
+                                        
+                                        // Activate Rule C Cooldown State for next 2000ms (2 seconds)
+                                        scanState.cooldownBarcode = rawValue
+                                        scanState.cooldownExpiryTime = currentTime + 2000L
+
+                                        // Reset the consecutive frame check state
+                                        scanState.lastScannedBarcode = null
+                                        scanState.scanCount = 0
+                                        scanState.firstScanTime = 0L
                                         break
                                     }
                                 }
